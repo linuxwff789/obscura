@@ -1,0 +1,63 @@
+name: build-android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "2"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake clang libclang-dev llvm-dev \
+            ninja-build pkg-config curl unzip zip
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Restore Rust dependency cache
+        uses: Swatinem/rust-cache@v2
+
+      # no-render + stealth (smallest, no CSS layout)
+      - name: Build no-render stealth
+        run: |
+          cargo build --release -p obscura-cli --bins \
+            --target aarch64-linux-android \
+            --no-default-features --features stealth
+        env:
+          V8_FROM_SOURCE: "1"
+
+      # render + stealth (full: layout, screenshot, PDF)
+      - name: Build render stealth
+        run: |
+          cargo build --release -p obscura-cli --bins \
+            --target aarch64-linux-android \
+            --features render,stealth
+        env:
+          V8_FROM_SOURCE: "1"
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          find target/aarch64-linux-android/release -maxdepth 1 -type f -executable -name "obscura*" -exec cp {} dist/ \;
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: obscura-android-aarch64
+          path: dist/
+          retention-days: 14
