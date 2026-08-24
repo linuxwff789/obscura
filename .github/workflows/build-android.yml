@@ -69,6 +69,10 @@ jobs:
             V8_SRC="$HOME/.cargo/registry/src/$SRC_HASH/v8-137.3.0"
             touch "$V8_SRC/.cargo-ok"
             echo "v8 extracted: $V8_SRC"
+            # 让 rusty_v8 build.rs 复用已装 NDK, 跳过它自己下载 (600MB)
+            mkdir -p "$V8_SRC/third_party"
+            ln -sfn /opt/android-ndk "$V8_SRC/third_party/android_ndk"
+            echo "NDK linked into v8 third_party"
             cd "$V8_SRC/build/android"
             grep -rhoE '"[^"]+\.pydeps"' --include="BUILD.gn" . 2>/dev/null | tr -d '"' | sort -u | while read -r f; do
               f=$(echo "$f" | sed 's|^//build/||')
@@ -99,6 +103,9 @@ jobs:
             --no-default-features --features stealth
         env:
           V8_FROM_SOURCE: "1"
+          # V8 android build needs the NDK sysroot (bionic headers); rusty_v8
+          # downloads a Debian sysroot instead, so point gn at the NDK.
+          GN_ARGS: 'android_ndk_root="/opt/android-ndk"'
 
       # render + stealth (full: layout, screenshot, PDF)
       - name: Build render stealth
@@ -108,6 +115,7 @@ jobs:
             --features render,stealth
         env:
           V8_FROM_SOURCE: "1"
+          GN_ARGS: 'android_ndk_root="/opt/android-ndk"'
 
       - name: Collect artifacts
         run: |
