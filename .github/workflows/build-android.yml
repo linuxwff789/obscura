@@ -53,13 +53,22 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       # v8 crate's build/android/ is missing .pydeps files (rusty_v8 137.3.0 bug
-      # on android cross-compile). gn gen fails reading them. Create them.
+      # on android cross-compile). gn gen fails reading them.
+      # cargo fetch only downloads .crate caches; extraction to registry/src
+      # happens at build time. So manually extract v8 and create the files.
       - name: Fetch deps and fix v8 missing pydeps
         run: |
           cargo fetch --target aarch64-linux-android
-          V8_SRC=$(find "$HOME/.cargo/registry/src" -maxdepth 2 -type d -name "v8-137.3.0" | head -1)
-          echo "v8 src: $V8_SRC"
-          if [ -n "$V8_SRC" ] && [ -d "$V8_SRC/build/android" ]; then
+          CACHE=$(find "$HOME/.cargo/registry/cache" -name "v8-137.3.0.crate" | head -1)
+          echo "cache: $CACHE"
+          if [ -n "$CACHE" ]; then
+            HASH_DIR=$(dirname "$CACHE")
+            SRC_HASH=$(basename "$HASH_DIR")
+            mkdir -p "$HOME/.cargo/registry/src/$SRC_HASH"
+            tar xzf "$CACHE" -C "$HOME/.cargo/registry/src/$SRC_HASH"
+            V8_SRC="$HOME/.cargo/registry/src/$SRC_HASH/v8-137.3.0"
+            touch "$V8_SRC/.cargo-ok"
+            echo "v8 extracted: $V8_SRC"
             cd "$V8_SRC/build/android"
             grep -rhoE '"[^"]+\.pydeps"' --include="BUILD.gn" . 2>/dev/null | tr -d '"' | sort -u | while read -r f; do
               if [ ! -f "$f" ]; then
@@ -68,7 +77,6 @@ jobs:
                 echo "created missing pydeps: $f"
               fi
             done
-            # 顶层 build/ 下也可能有
             cd "$V8_SRC/build"
             grep -rhoE '"[^"]+\.pydeps"' --include="BUILD.gn" android/ 2>/dev/null | tr -d '"' | sort -u | while read -r f; do
               if [ ! -f "$f" ]; then
@@ -78,7 +86,7 @@ jobs:
               fi
             done
           else
-            echo "WARN: v8 crate not found at expected path"
+            echo "WARN: v8 crate cache not found"
           fi
 
       # no-render + stealth (smallest, no CSS layout)
