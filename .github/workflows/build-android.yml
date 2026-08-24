@@ -10,6 +10,9 @@ env:
   CARGO_BUILD_JOBS: "2"
   CARGO_INCREMENTAL: "0"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -53,10 +56,23 @@ jobs:
       - name: Collect artifacts
         run: |
           mkdir -p dist
-          find target/aarch64-linux-android/release -maxdepth 1 -type f -executable -name "obscura*" -exec cp {} dist/ \;
+          for f in target/aarch64-linux-android/release/obscura target/aarch64-linux-android/release/obscura-worker; do
+            if [ -f "$f" ]; then cp "$f" dist/; fi
+          done
           ls -lh dist/
 
-      - uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="android-${{ github.run_id }}"
+          gh release create "$TAG" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "Obscura Android aarch64 build" \
+            --notes "Auto-built from commit ${{ github.sha }}. Obscura v0.2.1 cross-compiled for aarch64-linux-android (Termux)." || echo "release 创建失败(可能 tag 已存在)"
+
+      - name: Upload artifact (backup)
+        uses: actions/upload-artifact@v4
         with:
           name: obscura-android-aarch64
           path: dist/
