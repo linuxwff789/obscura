@@ -71,6 +71,7 @@ jobs:
             echo "v8 extracted: $V8_SRC"
             cd "$V8_SRC/build/android"
             grep -rhoE '"[^"]+\.pydeps"' --include="BUILD.gn" . 2>/dev/null | tr -d '"' | sort -u | while read -r f; do
+              f=$(echo "$f" | sed 's|^//build/||')
               if [ ! -f "$f" ]; then
                 mkdir -p "$(dirname "$f")"
                 touch "$f"
@@ -79,6 +80,7 @@ jobs:
             done
             cd "$V8_SRC/build"
             grep -rhoE '"[^"]+\.pydeps"' --include="BUILD.gn" android/ 2>/dev/null | tr -d '"' | sort -u | while read -r f; do
+              f=$(echo "$f" | sed 's|^//build/||')
               if [ ! -f "$f" ]; then
                 mkdir -p "$(dirname "$f")"
                 touch "$f"
