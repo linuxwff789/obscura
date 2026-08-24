@@ -107,7 +107,8 @@ jobs:
             echo "WARN: v8 crate cache not found"
           fi
 
-      # no-render + stealth (smallest, no CSS layout)
+      # no-render + stealth (smallest, no CSS layout) — publish this FIRST so
+      # render failures never block delivery of a working binary.
       - name: Build no-render stealth
         run: |
           cargo build --release -p obscura-cli --bins \
@@ -121,8 +122,28 @@ jobs:
           # link bionic stub (strtof_l/strtod_l/__clear_cache)
           CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS: "-C link-arg=${{ env.STUB_OBJ }}"
 
-      # render + stealth (full: layout, screenshot, PDF)
+      - name: Collect no-render binaries
+        run: |
+          mkdir -p dist
+          for f in target/aarch64-linux-android/release/obscura target/aarch64-linux-android/release/obscura-worker; do
+            if [ -f "$f" ]; then cp "$f" dist/; fi
+          done
+          ls -lh dist/
+
+      - name: Create GitHub Release (no-render)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="android-${{ github.run_id }}"
+          gh release create "$TAG" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "Obscura Android aarch64 build" \
+            --notes "Auto-built from commit ${{ github.sha }}. Obscura v0.2.1 cross-compiled for aarch64-linux-android (Termux)." || echo "release 创建失败(可能 tag 已存在)"
+
+      # render + stealth (full: layout, screenshot, PDF) — failure tolerated,
+      # no-render release above is already out.
       - name: Build render stealth
+        continue-on-error: true
         run: |
           cargo build --release -p obscura-cli --bins \
             --target aarch64-linux-android \
@@ -132,23 +153,26 @@ jobs:
           GN_ARGS: 'android_ndk_root="/opt/android-ndk"'
           CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS: "-C link-arg=${{ env.STUB_OBJ }}"
 
-      - name: Collect artifacts
-        run: |
-          mkdir -p dist
-          for f in target/aarch64-linux-android/release/obscura target/aarch64-linux-android/release/obscura-worker; do
-            if [ -f "$f" ]; then cp "$f" dist/; fi
-          done
-          ls -lh dist/
-
-      - name: Create GitHub Release
+      - name: Upload render binaries to release
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="android-${{ github.run_id }}"
-          gh release create "$TAG" dist/* \
-            --repo "${{ github.repository }}" \
-            --title "Obscura Android aarch64 build" \
-            --notes "Auto-built from commit ${{ github.sha }}. Obscura v0.2.1 cross-compiled for aarch64-linux-android (Termux)." || echo "release 创建失败(可能 tag 已存在)"
+          if ls target/aarch64-linux-android/release/obscura* >/dev/null 2>&1; then
+            # 区分 render 版: 把 render 二进制改名再上传
+            mkdir -p dist-render
+            for f in target/aarch64-linux-android/release/obscura target/aarch64-linux-android/release/obscura-worker; do
+              if [ -f "$f" ]; then
+                base=$(basename "$f")
+                cp "$f" "dist-render/${base}-render"
+              fi
+            done
+            TAG="android-${{ github.run_id }}"
+            gh release upload "$TAG" dist-render/* --repo "${{ github.repository }}" || echo "render 上传失败"
+            ls -lh dist-render/
+          else
+            echo "render 二进制不存在, 跳过上传"
+          fi
 
       - name: Upload artifact (backup)
         uses: actions/upload-artifact@v4
