@@ -32,6 +32,23 @@ jobs:
         with:
           targets: aarch64-linux-android
 
+      # Android NDK r26c — needed by cc-rs for C deps (zstd-sys etc.)
+      - name: Install Android NDK
+        run: |
+          curl -L --retry 3 -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r26c-linux.zip
+          unzip -q /tmp/ndk.zip -d /opt/
+          mv /opt/android-ndk-r26c /opt/android-ndk
+          NDK_BIN=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
+          echo "$NDK_BIN" >> "$GITHUB_PATH"
+          # cc-rs looks for `aarch64-linux-android-clang` without API level
+          ln -sf "$NDK_BIN/aarch64-linux-android24-clang" "$NDK_BIN/aarch64-linux-android-clang"
+          ln -sf "$NDK_BIN/aarch64-linux-android24-clang++" "$NDK_BIN/aarch64-linux-android-clang++"
+          ln -sf "$NDK_BIN/llvm-ar" "$NDK_BIN/aarch64-linux-android-ar"
+          echo "CC_aarch64_linux_android=aarch64-linux-android-clang" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_linux_android=aarch64-linux-android-clang++" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=aarch64-linux-android-ar" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=aarch64-linux-android-clang" >> "$GITHUB_ENV"
+
       - name: Restore Rust dependency cache
         uses: Swatinem/rust-cache@v2
 
