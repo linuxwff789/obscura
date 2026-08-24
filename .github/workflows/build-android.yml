@@ -49,13 +49,14 @@ jobs:
           echo "AR_aarch64_linux_android=aarch64-linux-android-ar" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=aarch64-linux-android-clang" >> "$GITHUB_ENV"
 
-      # bionic lacks strtof_l/strtod_l/__clear_cache (glibc-isms pulled in by
-      # V8/ICU). Provide stubs, linked into the final android binary only.
+      # bionic lacks strtof_l/strtod_l/__clear_cache symbols (glibc-isms
+      # pulled in by V8/ICU) at the api-24 libc target. Provide asm stubs,
+      # linked into the final android binary only.
       - name: Build bionic stub
         run: |
           NDK_BIN=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
-          "$NDK_BIN/aarch64-linux-android24-clang" -O2 \
-            -c "$GITHUB_WORKSPACE/scripts/bionic-stub.c" \
+          "$NDK_BIN/aarch64-linux-android24-clang" \
+            -c "$GITHUB_WORKSPACE/scripts/bionic-stub.S" \
             -o "$RUNNER_TEMP/bionic-stub.o"
           echo "STUB_OBJ=$RUNNER_TEMP/bionic-stub.o" >> "$GITHUB_ENV"
           ls -la "$RUNNER_TEMP/bionic-stub.o"
