@@ -52,6 +52,35 @@ jobs:
       - name: Restore Rust dependency cache
         uses: Swatinem/rust-cache@v2
 
+      # v8 crate's build/android/ is missing .pydeps files (rusty_v8 137.3.0 bug
+      # on android cross-compile). gn gen fails reading them. Create them.
+      - name: Fetch deps and fix v8 missing pydeps
+        run: |
+          cargo fetch --target aarch64-linux-android
+          V8_SRC=$(find "$HOME/.cargo/registry/src" -maxdepth 2 -type d -name "v8-137.3.0" | head -1)
+          echo "v8 src: $V8_SRC"
+          if [ -n "$V8_SRC" ] && [ -d "$V8_SRC/build/android" ]; then
+            cd "$V8_SRC/build/android"
+            grep -rhoE '"[^"]+\.pydeps"' --include="BUILD.gn" . 2>/dev/null | tr -d '"' | sort -u | while read -r f; do
+              if [ ! -f "$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                touch "$f"
+                echo "created missing pydeps: $f"
+              fi
+            done
+            # 顶层 build/ 下也可能有
+            cd "$V8_SRC/build"
+            grep -rhoE '"[^"]+\.pydeps"' --include="BUILD.gn" android/ 2>/dev/null | tr -d '"' | sort -u | while read -r f; do
+              if [ ! -f "$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                touch "$f"
+                echo "created missing pydeps (top): $f"
+              fi
+            done
+          else
+            echo "WARN: v8 crate not found at expected path"
+          fi
+
       # no-render + stealth (smallest, no CSS layout)
       - name: Build no-render stealth
         run: |
