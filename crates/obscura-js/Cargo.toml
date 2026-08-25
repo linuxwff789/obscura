@@ -23,6 +23,11 @@ deno_core = "0.350"
 obscura-dom = { workspace = true }
 obscura-net = { workspace = true }
 deno_core = "0.350"
+# Enable rusty_v8's use_custom_libcxx: V8 (chromium) compiles against its
+# vendored libc++ (unstable ABI). Linking the system libc++_shared.so (stable
+# ABI) corrupts std::string layout at runtime (ReadOnlyDeserializer crash with
+# 0x8080 pattern). Static vendored libc++ keeps the ABI self-consistent.
+rusty_v8 = { version = "137.3.0", features = ["use_custom_libcxx"] }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

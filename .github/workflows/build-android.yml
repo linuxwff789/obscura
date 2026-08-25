@@ -118,14 +118,9 @@ jobs:
           V8_FROM_SOURCE: "1"
           # V8 android build needs the NDK sysroot (bionic headers); rusty_v8
           # downloads a Debian sysroot instead, so point gn at the NDK.
-          # v8_use_external_startup_data=false embeds snapshot into the binary;
-          # v8_enable_pointer_compression=false avoids cross-mksnapshot heap
-          # layout mismatch (V8 137 default pc-compressed snapshots crash in
-          # ReadOnlyDeserializer on arm64).
-          # use_custom_libcxx=false: chromium's vendored libc++ (unstable ABI)
-          # is incompatible with the system libc++_shared.so -> std::string
-          # layout mismatch -> ReadOnlyDeserializer crash with 0x8080 pattern.
-          GN_ARGS: 'android_ndk_root="/opt/android-ndk" v8_use_external_startup_data=false v8_enable_pointer_compression=false use_custom_libcxx=false'
+          # libc++ ABI is handled via rusty_v8's use_custom_libcxx feature
+          # (static vendored libc++), so keep GN args minimal here.
+          GN_ARGS: 'android_ndk_root="/opt/android-ndk"'
           # link bionic stub (strtof_l/strtod_l/__clear_cache)
           CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS: "-C link-arg=${{ env.STUB_OBJ }}"
 
