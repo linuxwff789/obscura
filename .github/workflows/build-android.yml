@@ -103,6 +103,12 @@ jobs:
                 echo "created missing pydeps (top): $f"
               fi
             done
+            # V8 137.3.0 calls simdutf::atomic_binary_to_base64 but the vendored
+            # simdutf only has binary_to_base64 (API added in simdutf 6.1).
+            # Downgrade the call; return value and signature are identical.
+            sed -i 's/simdutf::atomic_binary_to_base64/simdutf::binary_to_base64/' \
+              "$V8_SRC/v8/src/builtins/builtins-typed-array.cc" 2>/dev/null || echo "simdutf patch skip"
+            echo "simdutf patched"
           else
             echo "WARN: v8 crate cache not found"
           fi
@@ -116,11 +122,14 @@ jobs:
             --no-default-features --features stealth
         env:
           V8_FROM_SOURCE: "1"
-          # V8 android build needs the NDK sysroot (bionic headers); rusty_v8
-          # downloads a Debian sysroot instead, so point gn at the NDK.
-          # libc++ ABI is handled via rusty_v8's use_custom_libcxx feature
-          # (static vendored libc++), so keep GN args minimal here.
-          GN_ARGS: 'android_ndk_root="/opt/android-ndk"'
+          # use_custom_libcxx=false: compile V8 against the NDK's stable-ABI
+          # libc++ so its std::string layout matches the system
+          # libc++_shared.so that rustc force-links (-lc++). The default
+          # vendored libc++ (unstable ABI) corrupts string layout at runtime
+          # (ReadOnlyDeserializer crash, 0x8080 pattern).
+          # treat_warnings_as_errors=false: host V8 uses system GCC libstdc++
+          # (deprecated get_temporary_buffer etc.) — warnings, not errors.
+          GN_ARGS: 'android_ndk_root="/opt/android-ndk" use_custom_libcxx=false treat_warnings_as_errors=false'
           # link bionic stub (strtof_l/strtod_l/__clear_cache)
           CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS: "-C link-arg=${{ env.STUB_OBJ }}"
 
