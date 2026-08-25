@@ -122,7 +122,10 @@ jobs:
           # v8_enable_pointer_compression=false avoids cross-mksnapshot heap
           # layout mismatch (V8 137 default pc-compressed snapshots crash in
           # ReadOnlyDeserializer on arm64).
-          GN_ARGS: 'android_ndk_root="/opt/android-ndk" v8_use_external_startup_data=false v8_enable_pointer_compression=false'
+          # use_custom_libcxx=false: chromium's vendored libc++ (unstable ABI)
+          # is incompatible with the system libc++_shared.so -> std::string
+          # layout mismatch -> ReadOnlyDeserializer crash with 0x8080 pattern.
+          GN_ARGS: 'android_ndk_root="/opt/android-ndk" v8_use_external_startup_data=false v8_enable_pointer_compression=false use_custom_libcxx=false'
           # link bionic stub (strtof_l/strtod_l/__clear_cache)
           CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS: "-C link-arg=${{ env.STUB_OBJ }}"
 
@@ -132,6 +135,8 @@ jobs:
           for f in target/aarch64-linux-android/release/obscura target/aarch64-linux-android/release/obscura-worker; do
             if [ -f "$f" ]; then cp "$f" dist/; fi
           done
+          # 附上 NDK 自带的 libc++_shared.so (与二进制同编译器版本, 避免 ABI 不匹配)
+          cp /opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so dist/ 2>/dev/null || echo "无 NDK libc++"
           ls -lh dist/
 
       - name: Create GitHub Release (no-render)
