@@ -67,35 +67,6 @@ jobs:
           ninja --version
           python3 --version
 
-      # rusty_v8 bindgen + V8 both need Clang 19+ (V8 150 uses libc++ builtin
-      # type traits that Clang 18 cannot parse). Prefer the prebuilt LLVM
-      # tarball over apt to dodge flaky Ubuntu mirrors.
-      - name: Install LLVM 19 (prebuilt)
-        id: llvm
-        continue-on-error: true
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "19"
-          directory: ${{ runner.temp }}/llvm
-
-      - name: Configure LLVM 19
-        run: |
-          set -euo pipefail
-          # install-llvm-action v2 exports LLVM_PATH (it has no LLVM_PATH output).
-          LLVM_DIR="${LLVM_PATH:-}"
-          if [ -z "$LLVM_DIR" ] || [ ! -x "$LLVM_DIR/bin/clang" ]; then
-            echo "prebuilt LLVM unavailable, falling back to apt (10 min cap)"
-            timeout 600 sudo apt-get update -o Acquire::Retries=2 || true
-            timeout 600 sudo apt-get install -y --no-install-recommends \
-              -o Acquire::Retries=2 clang-19 libclang-19-dev lld-19 llvm-19-dev
-            LLVM_DIR=/usr/lib/llvm-19
-          fi
-          echo "CLANG_BASE_PATH=$LLVM_DIR" >> "$GITHUB_ENV"
-          echo "LIBCLANG_PATH=$LLVM_DIR/lib" >> "$GITHUB_ENV"
-          echo "$LLVM_DIR/bin" >> "$GITHUB_PATH"
-          "$LLVM_DIR/bin/clang" --version
-          ls "$LLVM_DIR/lib"/libclang.so* | head -1
-
       - name: Install Android NDK r26c
         run: |
           NDK_ROOT="$RUNNER_TEMP/android-ndk-r26c"
@@ -149,6 +120,22 @@ jobs:
           grep -n "android_ndk_version" "$V8_SRC/build/config/android/config.gni"
           ls -l "$V8_SRC/third_party/android_toolchain/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
 
+      # V8 150's GN config pins clang_version="23" and hard-codes the
+      # lib/clang/23 builtins path, so a system LLVM 19 cannot satisfy the host
+      # toolchain (ninja: libclang_rt.builtins.a missing). Let rusty_v8's own
+      # update.py fetch the exact Chromium clang revision it expects.
+      - name: Install V8's pinned Chromium clang
+        run: |
+          set -euo pipefail
+          V8_SRC=$(find "$HOME/.cargo/registry/src" -maxdepth 2 -type d -name 'v8-150.4.0' | head -1)
+          python3 "$V8_SRC/tools/clang/scripts/update.py" \
+            --output-dir "$RUNNER_TEMP/clang-v8"
+          echo "CLANG_BASE_PATH=$RUNNER_TEMP/clang-v8" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$RUNNER_TEMP/clang-v8/lib" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-v8/bin/clang" --version
+          ls "$RUNNER_TEMP/clang-v8/lib"/libclang.so* | head -1
+          ls -d "$RUNNER_TEMP/clang-v8/lib/clang/23"
+
       - name: Build obscura (no-render, no-stealth)
         working-directory: src
         env:
@@ -157,8 +144,9 @@ jobs:
           # run pkg-config for glib and abort.
           GN_ARGS: 'use_glib=false android_ndk_root="//third_party/android_toolchain/ndk"'
         run: |
+          set -o pipefail
           cargo build --release --target aarch64-linux-android \
-            -p obscura-cli --bins --no-default-features -v 2>&1 | tee build.log
+            -p obscura-cli --bins --no-default-features 2>&1 | tee build.log
 
       - name: Inspect and package
         working-directory: src
@@ -171,6 +159,12 @@ jobs:
           # deno_v8), so ship the NDK runtime next to the binaries.
           cp "$NDK_TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" dist/
           ls -l dist
+          echo "--- gn_out ---"
+          ls -d target/aarch64-linux-android/release/gn_out/clang_*_v8_arm64 2>/dev/null || true
+          find target/aarch64-linux-android/release/gn_out -maxdepth 2 -name mksnapshot -print 2>/dev/null || true
+          for f in target/aarch64-linux-android/release/build/obscura-js-*/output; do
+            [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; }
+          done
           python3 - <<'PY'
           import struct, pathlib
           for p in ("dist/obscura", "dist/obscura-worker"):
