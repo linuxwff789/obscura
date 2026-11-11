@@ -123,11 +123,41 @@ jobs:
       - name: Add Rust target
         run: rustup target add aarch64-linux-android
 
+      # rusty_v8 150 vendors V8's Chromium build/ files, but its android
+      # config expects the NDK at //third_party/android_toolchain/ndk and reads
+      # an `android_ndk_version` GN variable that the vendored tree does not
+      # declare. Point both at the NDK r26c we installed and pin the version.
+      - name: Prepare v8 crate for Android cross-build
+        run: |
+          set -euo pipefail
+          cargo fetch --target aarch64-linux-android
+          CACHE=$(find "$HOME/.cargo/registry/cache" -name 'v8-150.4.0.crate' | head -1)
+          SRC_HASH=$(basename "$(dirname "$CACHE")")
+          SRC_ROOT="$HOME/.cargo/registry/src/$SRC_HASH"
+          V8_SRC="$SRC_ROOT/v8-150.4.0"
+          mkdir -p "$SRC_ROOT"
+          tar xzf "$CACHE" -C "$SRC_ROOT"
+          printf '{"v":1}' > "$V8_SRC/.cargo-ok"
+          mkdir -p "$V8_SRC/third_party/android_toolchain"
+          ln -sfn "$ANDROID_NDK_HOME" "$V8_SRC/third_party/android_ndk"
+          ln -sfn "$ANDROID_NDK_HOME" "$V8_SRC/third_party/android_toolchain/ndk"
+          # android_ndk_version is referenced by build/config/android/BUILD.gn
+          # but never declared in the vendored config.gni.
+          sed -i 's|^  android_ndk_root = "//third_party/android_toolchain/ndk"$|  android_ndk_root = "//third_party/android_toolchain/ndk"\n  android_ndk_version = "26"|' \
+            "$V8_SRC/build/config/android/config.gni"
+          grep -n "android_ndk_version" "$V8_SRC/build/config/android/config.gni"
+          ls -l "$V8_SRC/third_party/android_toolchain/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+
       - name: Build obscura (no-render, no-stealth)
         working-directory: src
+        env:
+          # use_glib=false: V8-as-a-library never uses glib, and the hosted
+          # runner lacks libglib2.0-dev. GN's host-side tools would otherwise
+          # run pkg-config for glib and abort.
+          GN_ARGS: 'use_glib=false android_ndk_root="//third_party/android_toolchain/ndk"'
         run: |
           cargo build --release --target aarch64-linux-android \
-            -p obscura-cli --bins --no-default-features
+            -p obscura-cli --bins --no-default-features -vv 2>&1 | tee build.log
 
       - name: Inspect and package
         working-directory: src
