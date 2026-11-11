@@ -52,24 +52,51 @@ jobs:
           path: src
           persist-credentials: false
 
-      - name: Install build dependencies
+      # The runner image already ships cmake, ninja and python3. apt is only a
+      # fallback: apt mirrors on hosted runners intermittently fail to resolve
+      # (azure.archive.ubuntu.com), so avoid a hard dependency on it.
+      - name: Ensure cmake / ninja / python
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ninja-build cmake unzip curl ca-certificates python3
-          # rusty_v8 bindgen needs Clang 19+: V8 150's libc++ headers use
-          # builtin type traits that system Clang 18 cannot parse.
-          if ! sudo apt-get install -y --no-install-recommends \
-              clang-19 libclang-19-dev lld-19 llvm-19-dev; then
-            curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
-            chmod +x /tmp/llvm.sh
-            sudo /tmp/llvm.sh 19
-            sudo apt-get install -y --no-install-recommends libclang-19-dev
+          set -euo pipefail
+          if ! command -v cmake >/dev/null || ! command -v ninja >/dev/null; then
+            sudo apt-get update -o Acquire::Retries=5 || true
+            sudo apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
+              cmake ninja-build unzip
           fi
-          echo "CLANG_BASE_PATH=/usr/lib/llvm-19" >> "$GITHUB_ENV"
-          echo "LIBCLANG_PATH=/usr/lib/llvm-19/lib" >> "$GITHUB_ENV"
-          echo "/usr/lib/llvm-19/bin" >> "$GITHUB_PATH"
-          /usr/lib/llvm-19/bin/clang --version
+          cmake --version | head -1
+          ninja --version
+          python3 --version
+
+      # rusty_v8 bindgen + V8 both need Clang 19+ (V8 150 uses libc++ builtin
+      # type traits that Clang 18 cannot parse). Prefer the prebuilt LLVM
+      # tarball over apt to dodge flaky Ubuntu mirrors.
+      - name: Install LLVM 19 (prebuilt)
+        id: llvm
+        continue-on-error: true
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "19"
+          directory: ${{ runner.temp }}/llvm
+
+      - name: Configure LLVM 19
+        run: |
+          set -euo pipefail
+          LLVM_DIR=""
+          if [ "${{ steps.llvm.outcome }}" = "success" ]; then
+            LLVM_DIR="${{ steps.llvm.outputs.LLVM_PATH }}"
+          fi
+          if [ -z "$LLVM_DIR" ] || [ ! -x "$LLVM_DIR/bin/clang" ]; then
+            echo "prebuilt LLVM unavailable, falling back to apt"
+            sudo apt-get update -o Acquire::Retries=5 || true
+            sudo apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
+              clang-19 libclang-19-dev lld-19 llvm-19-dev
+            LLVM_DIR=/usr/lib/llvm-19
+          fi
+          echo "CLANG_BASE_PATH=$LLVM_DIR" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$LLVM_DIR/lib" >> "$GITHUB_ENV"
+          echo "$LLVM_DIR/bin" >> "$GITHUB_PATH"
+          "$LLVM_DIR/bin/clang" --version
+          ls "$LLVM_DIR/lib"/libclang.so* | head -1
 
       - name: Install Android NDK r26c
         run: |
