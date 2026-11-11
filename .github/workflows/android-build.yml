@@ -1,0 +1,151 @@
+name: Android aarch64 build
+
+# Builds upstream Obscura for aarch64-linux-android (bionic) from source.
+#
+# Why this exists: obscura links V8 through rusty_v8, which publishes prebuilt
+# archives only for the five desktop targets in release.yml. Android therefore
+# requires V8_FROM_SOURCE=1 (rusty_v8 builds V8 with the NDK, GN + ninja).
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Upstream obscura ref (branch, tag or sha)"
+        required: false
+        default: main
+  push:
+    branches: [android]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      V8_FROM_SOURCE: "1"
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+      RUST_BACKTRACE: "1"
+      OBSCURA_REF: ${{ inputs.upstream_ref || 'main' }}
+      ANDROID_API: "24"
+
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/node_modules /usr/share/swift /opt/az /usr/lib/jvm \
+            /usr/local/share/powershell 2>/dev/null || true
+          sudo apt-get clean
+          df -h /
+
+      - name: Checkout obscura
+        uses: actions/checkout@v4
+        with:
+          repository: h4ckf0r0day/obscura
+          ref: ${{ env.OBSCURA_REF }}
+          path: src
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build cmake unzip curl ca-certificates python3
+          # rusty_v8 bindgen needs Clang 19+: V8 150's libc++ headers use
+          # builtin type traits that system Clang 18 cannot parse.
+          if ! sudo apt-get install -y --no-install-recommends \
+              clang-19 libclang-19-dev lld-19 llvm-19-dev; then
+            curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+            chmod +x /tmp/llvm.sh
+            sudo /tmp/llvm.sh 19
+            sudo apt-get install -y --no-install-recommends libclang-19-dev
+          fi
+          echo "CLANG_BASE_PATH=/usr/lib/llvm-19" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=/usr/lib/llvm-19/lib" >> "$GITHUB_ENV"
+          echo "/usr/lib/llvm-19/bin" >> "$GITHUB_PATH"
+          /usr/lib/llvm-19/bin/clang --version
+
+      - name: Install Android NDK r26c
+        run: |
+          NDK_ROOT="$RUNNER_TEMP/android-ndk-r26c"
+          if [ ! -d "$NDK_ROOT" ]; then
+            curl -fL --retry 3 -o "$RUNNER_TEMP/ndk.zip" \
+              https://dl.google.com/android/repository/android-ndk-r26c-linux.zip
+            unzip -q "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
+            rm -f "$RUNNER_TEMP/ndk.zip"
+          fi
+          TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          {
+            echo "ANDROID_NDK_HOME=$NDK_ROOT"
+            echo "ANDROID_NDK_ROOT=$NDK_ROOT"
+            echo "NDK_TOOLCHAIN=$TOOLCHAIN"
+            echo "CC_aarch64-linux-android=$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang"
+            echo "CXX_aarch64-linux-android=$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang++"
+            echo "AR_aarch64-linux-android=$TOOLCHAIN/bin/llvm-ar"
+            echo "RANLIB_aarch64-linux-android=$TOOLCHAIN/bin/llvm-ranlib"
+            echo "STRIP_aarch64-linux-android=$TOOLCHAIN/bin/llvm-strip"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang"
+          } >> "$GITHUB_ENV"
+          "$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang" --version
+          df -h /
+
+      - name: Add Rust target
+        run: rustup target add aarch64-linux-android
+
+      - name: Build obscura (no-render, no-stealth)
+        working-directory: src
+        run: |
+          cargo build --release --target aarch64-linux-android \
+            -p obscura-cli --bins --no-default-features
+
+      - name: Inspect and package
+        working-directory: src
+        run: |
+          set -euo pipefail
+          BIN=target/aarch64-linux-android/release
+          mkdir -p dist
+          cp "$BIN/obscura" "$BIN/obscura-worker" dist/
+          # v8 links -lc++_shared on Android (use_custom_libcxx is disabled by
+          # deno_v8), so ship the NDK runtime next to the binaries.
+          cp "$NDK_TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" dist/
+          ls -l dist
+          python3 - <<'PY'
+          import struct, pathlib
+          for p in ("dist/obscura", "dist/obscura-worker"):
+              d = pathlib.Path(p).read_bytes()
+              assert d[:4] == b"\x7fELF", p
+              machine = struct.unpack_from("<H", d, 0x12)[0]
+              interp = ""
+              phoff, phentsize, phnum = struct.unpack_from("<Q", d, 0x20)[0], struct.unpack_from("<H", d, 0x36)[0], struct.unpack_from("<H", d, 0x38)[0]
+              for i in range(phnum):
+                  o = phoff + i * phentsize
+                  if struct.unpack_from("<I", d, o)[0] == 3:
+                      off, sz = struct.unpack_from("<Q", d, o + 8)[0], struct.unpack_from("<Q", d, o + 32)[0]
+                      interp = d[off:off+sz].decode().rstrip("\0")
+              print(f"{p}: size={len(d)} e_machine=0x{machine:x} interp={interp!r}")
+              assert machine == 0xB7, "not aarch64"
+              assert interp == "/system/bin/linker64", "not an Android/bionic binary"
+          PY
+          tar czf obscura-aarch64-android.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obscura-aarch64-android
+          path: src/obscura-aarch64-android.tar.gz
+          if-no-files-found: error
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            src/target/aarch64-linux-android/release/build/**/output
+          if-no-files-found: ignore
