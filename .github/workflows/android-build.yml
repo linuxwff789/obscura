@@ -142,6 +142,17 @@ jobs:
           ln -sfn "$ANDROID_NDK_HOME" "$V8_SRC/third_party/android_toolchain/ndk"
           # android_ndk_version is referenced by build/config/android/BUILD.gn
           # but never declared in the vendored config.gni.
+          # The published v8 crate strips the large ICU data bundles
+          # (third_party/icu/{common,android}/icudtl.dat). Chromium's
+          # ICU-77 data for Chromecast ships in the crate and matches the
+          # vendored ICU version, so reuse it for host and android builds.
+          mkdir -p "$V8_SRC/third_party/icu/common" "$V8_SRC/third_party/icu/android"
+          cp "$V8_SRC/third_party/icu/chromecast_video/icudtl.dat" \
+             "$V8_SRC/third_party/icu/common/icudtl.dat"
+          cp "$V8_SRC/third_party/icu/chromecast_video/icudtl.dat" \
+             "$V8_SRC/third_party/icu/android/icudtl.dat"
+          ls -l "$V8_SRC/third_party/icu/common/icudtl.dat" \
+                "$V8_SRC/third_party/icu/android/icudtl.dat"
           sed -i 's|^  android_ndk_root = "//third_party/android_toolchain/ndk"$|  android_ndk_root = "//third_party/android_toolchain/ndk"\n  android_ndk_version = "26"|' \
             "$V8_SRC/build/config/android/config.gni"
           grep -n "android_ndk_version" "$V8_SRC/build/config/android/config.gni"
