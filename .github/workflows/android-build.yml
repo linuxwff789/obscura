@@ -157,7 +157,7 @@ jobs:
           GN_ARGS: 'use_glib=false android_ndk_root="//third_party/android_toolchain/ndk"'
         run: |
           cargo build --release --target aarch64-linux-android \
-            -p obscura-cli --bins --no-default-features -vv 2>&1 | tee build.log
+            -p obscura-cli --bins --no-default-features -v 2>&1 | tee build.log
 
       - name: Inspect and package
         working-directory: src
@@ -202,5 +202,7 @@ jobs:
         with:
           name: build-logs
           path: |
+            src/build.log
             src/target/aarch64-linux-android/release/build/**/output
+            src/target/aarch64-linux-android/release/gn_out/args.gn
           if-no-files-found: ignore
