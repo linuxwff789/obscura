@@ -67,6 +67,33 @@ jobs:
           ninja --version
           python3 --version
 
+      # bindgen needs libclang (the Chromium clang bundle is compiler-only and
+      # ships no libclang.so), so keep a standalone LLVM just for that. GN still
+      # uses the V8-pinned clang 23 below via CLANG_BASE_PATH.
+      - name: Install LLVM 19 for libclang
+        id: llvm
+        continue-on-error: true
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "19"
+          directory: ${{ runner.temp }}/llvm
+          env: false
+
+      - name: Configure libclang
+        run: |
+          set -euo pipefail
+          LLVM_DIR="${LLVM_PATH:-}"
+          if [ -z "$LLVM_DIR" ] || [ ! -e "$LLVM_DIR/lib/libclang.so" ]; then
+            echo "prebuilt LLVM unavailable, falling back to apt (10 min cap)"
+            timeout 600 sudo apt-get update -o Acquire::Retries=2 || true
+            timeout 600 sudo apt-get install -y --no-install-recommends \
+              -o Acquire::Retries=2 clang-19 libclang-19-dev
+            LLVM_DIR=/usr/lib/llvm-19
+          fi
+          test -e "$LLVM_DIR/lib/libclang.so"
+          echo "LIBCLANG_PATH=$LLVM_DIR/lib" >> "$GITHUB_ENV"
+          ls "$LLVM_DIR/lib"/libclang.so*
+
       - name: Install Android NDK r26c
         run: |
           NDK_ROOT="$RUNNER_TEMP/android-ndk-r26c"
@@ -133,7 +160,6 @@ jobs:
           echo "CLANG_BASE_PATH=$RUNNER_TEMP/clang-v8" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$RUNNER_TEMP/clang-v8/lib" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/clang-v8/bin/clang" --version
-          ls "$RUNNER_TEMP/clang-v8/lib"/libclang.so* | head -1
           ls -d "$RUNNER_TEMP/clang-v8/lib/clang/23"
 
       - name: Build obscura (no-render, no-stealth)
