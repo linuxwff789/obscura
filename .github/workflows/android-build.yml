@@ -179,7 +179,12 @@ jobs:
           # use_glib=false: V8-as-a-library never uses glib, and the hosted
           # runner lacks libglib2.0-dev. GN's host-side tools would otherwise
           # run pkg-config for glib and abort.
-          GN_ARGS: 'use_glib=false android_ndk_root="//third_party/android_toolchain/ndk"'
+          # v8_enable_temporal_support=false: V8 150 implements Temporal in
+          # Rust (//third_party/rust/temporal_capi) and the published v8 crate
+          # strips third_party/rust/chromium_crates_io/vendor, so the Rust host
+          # tools cannot build. Temporarily drop Temporal to get a runnable
+          # engine; it can be re-enabled once the vendor tree is supplied.
+          GN_ARGS: 'use_glib=false android_ndk_root="//third_party/android_toolchain/ndk" v8_enable_temporal_support=false'
         run: |
           set -o pipefail
           cargo build --release --target aarch64-linux-android \
