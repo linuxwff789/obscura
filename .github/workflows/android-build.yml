@@ -151,6 +151,19 @@ jobs:
              "$V8_SRC/third_party/icu/common/icudtl.dat"
           cp "$V8_SRC/third_party/icu/chromecast_video/icudtl.dat" \
              "$V8_SRC/third_party/icu/android/icudtl.dat"
+          # The crate also strips .pydeps manifests that GN reads from
+          # build/android/**/BUILD.gn. Empty placeholders are enough: they only
+          # describe Python test-runner deps, which a headless build never runs.
+          for d in "$V8_SRC/build/android" "$V8_SRC/build"; do
+            ( cd "$d"
+              grep -rhoE '"[^"]+\.pydeps"' --include=BUILD.gn . | tr -d '"' | sort -u |
+              while read -r f; do
+                f="${f#//build/}"; f="${f#./}"
+                mkdir -p "$(dirname "$f")"
+                [ -f "$f" ] || touch "$f"
+              done )
+          done
+          find "$V8_SRC/build" -name '*.pydeps' | head -20
           ls -l "$V8_SRC/third_party/icu/common/icudtl.dat" \
                 "$V8_SRC/third_party/icu/android/icudtl.dat"
           sed -i 's|^  android_ndk_root = "//third_party/android_toolchain/ndk"$|  android_ndk_root = "//third_party/android_toolchain/ndk"\n  android_ndk_version = "26"|' \
@@ -169,7 +182,6 @@ jobs:
           python3 "$V8_SRC/tools/clang/scripts/update.py" \
             --output-dir "$RUNNER_TEMP/clang-v8"
           echo "CLANG_BASE_PATH=$RUNNER_TEMP/clang-v8" >> "$GITHUB_ENV"
-          echo "LIBCLANG_PATH=$RUNNER_TEMP/clang-v8/lib" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/clang-v8/bin/clang" --version
           ls -d "$RUNNER_TEMP/clang-v8/lib/clang/23"
 
