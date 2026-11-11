@@ -128,6 +128,7 @@ jobs:
       # an `android_ndk_version` GN variable that the vendored tree does not
       # declare. Point both at the NDK r26c we installed and pin the version.
       - name: Prepare v8 crate for Android cross-build
+        working-directory: src
         run: |
           set -euo pipefail
           cargo fetch --target aarch64-linux-android
