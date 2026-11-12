@@ -211,6 +211,18 @@ jobs:
       # lib/clang/23 builtins path, so a system LLVM 19 cannot satisfy the host
       # toolchain (ninja: libclang_rt.builtins.a missing). Let rusty_v8's own
       # update.py fetch the exact Chromium clang revision it expects.
+      # Reuse the expensive V8 object trees between runs. Ninja validates
+      # inputs itself, so a stale cache only costs a rebuild, never a bad link.
+      - name: Restore V8 build cache
+        id: v8cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            src/target/release/gn_out
+            src/target/aarch64-linux-android/release/gn_out
+          key: v8-android-${{ hashFiles('src/Cargo.lock') }}
+          restore-keys: v8-android-
+
       - name: Install V8's pinned Chromium clang
         run: |
           set -euo pipefail
@@ -284,6 +296,15 @@ jobs:
           name: obscura-aarch64-android
           path: src/obscura-aarch64-android.tar.gz
           if-no-files-found: error
+
+      - name: Save V8 build cache
+        if: always() && steps.v8cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            src/target/release/gn_out
+            src/target/aarch64-linux-android/release/gn_out
+          key: v8-android-${{ hashFiles('src/Cargo.lock') }}
 
       - name: Upload build logs on failure
         if: failure()
