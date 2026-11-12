@@ -114,6 +114,11 @@ jobs:
             echo "RANLIB_aarch64-linux-android=$TOOLCHAIN/bin/llvm-ranlib"
             echo "STRIP_aarch64-linux-android=$TOOLCHAIN/bin/llvm-strip"
             echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang"
+            # bindgen's libclang must parse V8 headers for the android triple
+            # using the NDK sysroot; without this it falls back to host glibc
+            # headers and fails on bits/wordsize.h.
+            echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64-linux-android=--sysroot=$TOOLCHAIN/sysroot -target aarch64-linux-android${ANDROID_API}"
+            echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$TOOLCHAIN/sysroot -target aarch64-linux-android${ANDROID_API}"
           } >> "$GITHUB_ENV"
           "$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang" --version
           df -h /
