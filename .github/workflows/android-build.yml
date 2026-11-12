@@ -62,6 +62,13 @@ jobs:
           path: assets
           persist-credentials: false
 
+      - name: Add snapshot generator to the build tree
+        run: |
+          mkdir -p src/tools/obscura-snapshot/src
+          cp assets/tools/obscura-snapshot/Cargo.toml src/tools/obscura-snapshot/
+          cp assets/tools/obscura-snapshot/src/main.rs src/tools/obscura-snapshot/src/
+          ls -l src/tools/obscura-snapshot src/tools/obscura-snapshot/src
+
       # The runner image already ships cmake, ninja and python3. apt is only a
       # fallback: apt mirrors on hosted runners intermittently fail to resolve
       # (azure.archive.ubuntu.com), so avoid a hard dependency on it.
@@ -237,17 +244,13 @@ jobs:
           p = pathlib.Path(sys.argv[1])
           s = p.read_text()
           anchor = "    if is_cross {"
-          inject = """    if is_cross {
-        if let Ok(external) = std::env::var("OBSCURA_SNAPSHOT_BIN") {
-            std::fs::copy(&external, &snapshot_path).expect("copy OBSCURA_SNAPSHOT_BIN");
-            println!("cargo:rustc-env=OBSCURA_SNAPSHOT_PATH={}", snapshot_path.display());
-            return;
-        }"""
+          inject = '    if is_cross {\n        if let Ok(external) = std::env::var("OBSCURA_SNAPSHOT_BIN") {\n            std::fs::copy(&external, &snapshot_path).expect("copy OBSCURA_SNAPSHOT_BIN");\n            println!("cargo:rustc-env=OBSCURA_SNAPSHOT_PATH={}", snapshot_path.display());\n            return;\n        }'
+
           assert anchor in s
           p.write_text(s.replace(anchor, inject, 1))
           PYEOF
           grep -n "OBSCURA_SNAPSHOT_BIN" crates/obscura-js/build.rs
-          cat tools/obscura-snapshot/Cargo.toml 2>/dev/null || true
+          ls -l tools/obscura-snapshot/Cargo.toml
 
       # Reuse the expensive V8 object trees between runs. Ninja validates
       # inputs itself, so a stale cache only costs a rebuild, never a bad link.
