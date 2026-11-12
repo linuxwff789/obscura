@@ -207,6 +207,32 @@ jobs:
           print(f"removed {n} use_sysroot=true pushes")
           PYEOF
 
+          # deno_core's uv_compat only implements errno_location for
+          # macos/linux; Android (bionic) exposes __errno() instead. Patch the
+          # vendored copy just like the v8 crate patches above.
+          DC_CACHE=$(find "$HOME/.cargo/registry/cache" -name 'deno_core-0.412.0.crate' | head -1)
+          tar xzf "$DC_CACHE" -C "$SRC_ROOT"
+          DC_SRC="$SRC_ROOT/deno_core-0.412.0"
+          printf '{"v":1}' > "$DC_SRC/.cargo-ok"
+          python3 - "$DC_SRC/uv_compat/tty.rs" <<'PYEOF'
+          import sys
+          p = sys.argv[1]
+          s = open(p).read()
+          old = '  #[cfg(not(any(target_os = "macos", target_os = "linux")))]'
+          new = '''  #[cfg(target_os = "android")]
+          fn errno_location() -> *mut c_int {
+            unsafe extern "C" {
+              fn __errno() -> *mut c_int;
+            }
+            unsafe { __errno() }
+          }
+
+          #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "android")))]'''
+          assert old in s, "deno_core errno_location block not found"
+          open(p, "w").write(s.replace(old, new, 1))
+          print("patched deno_core errno_location for android")
+          PYEOF
+
       # V8 150's GN config pins clang_version="23" and hard-codes the
       # lib/clang/23 builtins path, so a system LLVM 19 cannot satisfy the host
       # toolchain (ninja: libclang_rt.builtins.a missing). Let rusty_v8's own
