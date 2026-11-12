@@ -186,6 +186,22 @@ jobs:
           grep -n "android_ndk_version" "$V8_SRC/build/config/android/config.gni"
           ls -l "$V8_SRC/third_party/android_toolchain/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
 
+          # rusty_v8's android branch pushes use_sysroot=true, which also makes
+          # the x64 host toolchain (mksnapshot) look for Chromium's
+          # debian_bullseye sysroot. GN takes the first duplicate --args value,
+          # so GN_ARGS cannot override it; remove the push from build.rs.
+          python3 - "$V8_SRC/build.rs" <<'PYEOF'
+          import sys
+          p = sys.argv[1]
+          s = open(p).read()
+          needle = 'gn_args.push("use_sysroot=true".to_string());'
+          n = s.count(needle)
+          assert n >= 1, "use_sysroot push not found"
+          s = s.replace(needle, '// patched: host uses system headers, android uses the NDK sysroot')
+          open(p, "w").write(s)
+          print(f"removed {n} use_sysroot=true pushes")
+          PYEOF
+
       # V8 150's GN config pins clang_version="23" and hard-codes the
       # lib/clang/23 builtins path, so a system LLVM 19 cannot satisfy the host
       # toolchain (ninja: libclang_rt.builtins.a missing). Let rusty_v8's own
