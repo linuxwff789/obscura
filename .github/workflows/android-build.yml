@@ -196,7 +196,11 @@ jobs:
           # strips third_party/rust/chromium_crates_io/vendor, so the Rust host
           # tools cannot build. Temporarily drop Temporal to get a runnable
           # engine; it can be re-enabled once the vendor tree is supplied.
-          GN_ARGS: 'use_glib=false android_ndk_root="//third_party/android_toolchain/ndk" v8_enable_temporal_support=false'
+          # use_sysroot=false: rusty_v8 forces use_sysroot=true for android,
+          # which also makes the host toolchain (clang_x64_v8_arm64, used for
+          # mksnapshot) require Chromium's debian_bullseye sysroot. The host
+          # and NDK toolchains already provide their own sysroots.
+          GN_ARGS: 'use_glib=false use_sysroot=false android_ndk_root="//third_party/android_toolchain/ndk" v8_enable_temporal_support=false'
         run: |
           set -o pipefail
           cargo build --release --target aarch64-linux-android \
