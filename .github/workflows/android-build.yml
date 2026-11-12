@@ -142,6 +142,27 @@ jobs:
           ln -sfn "$ANDROID_NDK_HOME" "$V8_SRC/third_party/android_toolchain/ndk"
           # android_ndk_version is referenced by build/config/android/BUILD.gn
           # but never declared in the vendored config.gni.
+          # GN's use_sysroot default is CPU-based and cannot be reliably
+          # overridden from --args (rusty_v8 appends use_sysroot=true for
+          # android, which also affects the x64 host toolchain and demands
+          # Chromium's debian_bullseye sysroot). Force it off in the vendored
+          # gn file itself.
+          python3 - "$V8_SRC/build/toolchain/sysroot.gni" <<'PYEOF'
+          import sys
+          path = sys.argv[1]
+          src = open(path).read()
+          old = """  use_sysroot =
+              current_cpu == "x86" || current_cpu == "x64" || current_cpu == "arm" ||
+              current_cpu == "arm64" || current_cpu == "mipsel" ||
+              current_cpu == "mips64el" || current_cpu == "riscv64"
+          """
+          if old not in src:
+              raise SystemExit("use_sysroot default block not found")
+          open(path, "w").write(src.replace(old, "  use_sysroot = false\n"))
+          print("patched use_sysroot -> false")
+          PYEOF
+          grep -n "use_sysroot" "$V8_SRC/build/toolchain/sysroot.gni"
+
           # The published v8 crate strips the large ICU data bundles
           # (third_party/icu/{common,android}/icudtl.dat). Chromium's
           # ICU-77 data for Chromecast ships in the crate and matches the
