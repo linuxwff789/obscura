@@ -292,7 +292,9 @@ jobs:
           GN_ARGS: 'use_glib=false use_sysroot=false android_ndk_root="//third_party/android_toolchain/ndk" v8_enable_temporal_support=false'
         run: |
           set -o pipefail
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ"
+          # Android's bionic linker rejects binaries whose TLS segment is not
+          # 64-byte aligned; static V8 objects only request 8.
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ -C link-arg=-Wl,-z,tls-align=64"
           cargo build --release --target aarch64-linux-android \
             --manifest-path tools/obscura-snapshot/Cargo.toml \
             --target-dir target 2>&1 | tee snapshot-build.log
@@ -328,7 +330,9 @@ jobs:
           OBSCURA_SNAPSHOT_BIN: ${{ github.workspace }}/assets/snapshot/OBSCURA_SNAPSHOT.bin
         run: |
           set -o pipefail
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ"
+          # Android's bionic linker rejects binaries whose TLS segment is not
+          # 64-byte aligned; static V8 objects only request 8.
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ -C link-arg=-Wl,-z,tls-align=64"
           cargo build --release --target aarch64-linux-android \
             -p obscura-cli --bins --no-default-features 2>&1 | tee build.log
 
