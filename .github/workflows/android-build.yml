@@ -244,7 +244,7 @@ jobs:
           p = pathlib.Path(sys.argv[1])
           s = p.read_text()
           anchor = "    if is_cross {"
-          inject = '    if is_cross {\n        if let Ok(external) = std::env::var("OBSCURA_SNAPSHOT_BIN") {\n            std::fs::copy(&external, &snapshot_path).expect("copy OBSCURA_SNAPSHOT_BIN");\n            println!("cargo:rustc-env=OBSCURA_SNAPSHOT_PATH={}", snapshot_path.display());\n            return;\n        }'
+          inject = '    if is_cross {\n        if let Ok(external) = std::env::var("OBSCURA_SNAPSHOT_BIN") {\n            std::fs::copy(&external, &snapshot_path).expect("copy OBSCURA_SNAPSHOT_BIN");\n            println!("cargo:rustc-env=OBSCURA_SNAPSHOT_PATH={}", snapshot_path.display());\n            println!("cargo:rustc-cfg=obscura_external_bootstrap");\n            return;\n        }'
 
           assert anchor in s
           p.write_text(s.replace(anchor, inject, 1))
