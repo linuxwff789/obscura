@@ -255,7 +255,8 @@ jobs:
       - name: Build bionic compatibility stub
         run: |
           set -euo pipefail
-          "$CC_aarch64-linux-android" -c bionic-stub.c -o "$RUNNER_TEMP/bionic-stub.o" -fPIC -O2
+          "$NDK_TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang" \
+            -c bionic-stub.c -o "$RUNNER_TEMP/bionic-stub.o" -fPIC -O2
           echo "BIONIC_STUB_OBJ=$RUNNER_TEMP/bionic-stub.o" >> "$GITHUB_ENV"
           ls -l "$RUNNER_TEMP/bionic-stub.o"
 
