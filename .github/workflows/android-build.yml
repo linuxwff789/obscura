@@ -252,6 +252,13 @@ jobs:
           grep -n "OBSCURA_SNAPSHOT_BIN" crates/obscura-js/build.rs
           ls -l tools/obscura-snapshot/Cargo.toml
 
+      - name: Build bionic compatibility stub
+        run: |
+          set -euo pipefail
+          "$CC_aarch64-linux-android" -c bionic-stub.c -o "$RUNNER_TEMP/bionic-stub.o" -fPIC -O2
+          echo "BIONIC_STUB_OBJ=$RUNNER_TEMP/bionic-stub.o" >> "$GITHUB_ENV"
+          ls -l "$RUNNER_TEMP/bionic-stub.o"
+
       # Reuse the expensive V8 object trees between runs. Ninja validates
       # inputs itself, so a stale cache only costs a rebuild, never a bad link.
       - name: Restore V8 build cache
@@ -280,6 +287,7 @@ jobs:
           GN_ARGS: 'use_glib=false use_sysroot=false android_ndk_root="//third_party/android_toolchain/ndk" v8_enable_temporal_support=false'
         run: |
           set -o pipefail
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ"
           cargo build --release --target aarch64-linux-android \
             --manifest-path tools/obscura-snapshot/Cargo.toml \
             --target-dir target 2>&1 | tee snapshot-build.log
@@ -315,6 +323,7 @@ jobs:
           OBSCURA_SNAPSHOT_BIN: ${{ github.workspace }}/assets/snapshot/OBSCURA_SNAPSHOT.bin
         run: |
           set -o pipefail
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ"
           cargo build --release --target aarch64-linux-android \
             -p obscura-cli --bins --no-default-features 2>&1 | tee build.log
 
