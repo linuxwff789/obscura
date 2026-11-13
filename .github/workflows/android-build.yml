@@ -307,6 +307,31 @@ jobs:
           cp "$NDK_TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" dist-snapshot/
           tar czf obscura-snapshot-aarch64-android.tar.gz -C dist-snapshot .
 
+      - name: Verify snapshot generator ELF
+        working-directory: src
+        run: |
+          python3 - <<'PY'
+          import struct, pathlib
+          p = pathlib.Path("target/aarch64-linux-android/release/obscura-snapshot")
+          d = p.read_bytes()
+          assert d[:4] == b"\x7fELF"
+          machine = struct.unpack_from("<H", d, 0x12)[0]
+          phoff, phentsize, phnum = (struct.unpack_from("<Q", d, 0x20)[0], struct.unpack_from("<H", d, 0x36)[0], struct.unpack_from("<H", d, 0x38)[0])
+          interp, tls_align = "", 0
+          for i in range(phnum):
+              o = phoff + i * phentsize
+              ptype = struct.unpack_from("<I", d, o)[0]
+              if ptype == 3:
+                  off, sz = struct.unpack_from("<Q", d, o + 8)[0], struct.unpack_from("<Q", d, o + 32)[0]
+                  interp = d[off:off+sz].decode().rstrip("\0")
+              if ptype == 7:
+                  tls_align = struct.unpack_from("<Q", d, o + 48)[0]
+          print(f"machine=0x{machine:x} interp={interp!r} tls_align={tls_align}")
+          assert machine == 0xB7, "not aarch64"
+          assert interp == "/system/bin/linker64", "not an Android/bionic binary"
+          assert tls_align >= 64, "bionic will reject an underaligned TLS segment"
+          PY
+
       - name: Upload snapshot generator
         uses: actions/upload-artifact@v4
         with:

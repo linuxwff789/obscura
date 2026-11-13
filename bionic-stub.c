@@ -7,10 +7,23 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-// bionic has no libc __clear_cache symbol; Rust/V8 codegen references it.
-// Match the compiler builtin's signature to avoid the conflicting-type error.
+// bionic has no libc __clear_cache symbol. Do NOT call
+// __builtin___clear_cache here: on aarch64 bionic that builtin lowers to a
+// call to __clear_cache itself, i.e. infinite recursion (observed as a 100%
+// CPU hang during the first baseline JIT compile). Use the compiler-rt
+// aarch64 sequence instead.
 void __clear_cache(void* begin, void* end) {
-  __builtin___clear_cache((char*)begin, (char*)end);
+  char* b = (char*)begin;
+  char* e = (char*)end;
+  for (char* p = b; p < e; p += 64) {
+    __asm__ __volatile__("dc cvau, %0" ::"r"(p) : "memory");
+  }
+  __asm__ __volatile__("dsb ish" ::: "memory");
+  for (char* p = b; p < e; p += 64) {
+    __asm__ __volatile__("ic ivau, %0" ::"r"(p) : "memory");
+  }
+  __asm__ __volatile__("dsb ish" ::: "memory");
+  __asm__ __volatile__("isb" ::: "memory");
 }
 
 // bionic has a single C locale, so the locale-aware variants fall back to the
