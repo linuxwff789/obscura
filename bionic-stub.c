@@ -41,3 +41,9 @@ void* __obscura_aligned_alloc(size_t alignment, size_t size) {
   }
   return ptr;
 }
+
+// Android's bionic linker requires the TLS segment to be at least 64-byte
+// aligned on arm64, while V8's static objects only request 8. One over-aligned
+// thread-local forces the linker to raise the segment alignment; --undefined
+// keeps it alive through --gc-sections.
+__thread char __obscura_tls_align[64] __attribute__((used, aligned(64)));

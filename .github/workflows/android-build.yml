@@ -293,8 +293,9 @@ jobs:
         run: |
           set -o pipefail
           # Android's bionic linker rejects binaries whose TLS segment is not
-          # 64-byte aligned; static V8 objects only request 8.
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ -C link-arg=-Wl,-z,tls-align=64"
+          # 64-byte aligned; static V8 objects only request 8. bionic-stub.c
+          # defines an over-aligned TLS symbol that we force into the link.
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ -C link-arg=-Wl,-u,__obscura_tls_align"
           cargo build --release --target aarch64-linux-android \
             --manifest-path tools/obscura-snapshot/Cargo.toml \
             --target-dir target 2>&1 | tee snapshot-build.log
@@ -331,8 +332,9 @@ jobs:
         run: |
           set -o pipefail
           # Android's bionic linker rejects binaries whose TLS segment is not
-          # 64-byte aligned; static V8 objects only request 8.
-          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ -C link-arg=-Wl,-z,tls-align=64"
+          # 64-byte aligned; static V8 objects only request 8. bionic-stub.c
+          # defines an over-aligned TLS symbol that we force into the link.
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ -C link-arg=-Wl,-u,__obscura_tls_align"
           cargo build --release --target aarch64-linux-android \
             -p obscura-cli --bins --no-default-features 2>&1 | tee build.log
 
