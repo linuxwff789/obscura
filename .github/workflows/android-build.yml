@@ -250,6 +250,10 @@ jobs:
           p.write_text(s.replace(anchor, inject, 1))
           PYEOF
           grep -n "OBSCURA_SNAPSHOT_BIN" crates/obscura-js/build.rs
+          # Cache restores give ninja objects a fresh mtime, while this run
+          # re-extracts the V8 sources. Age the sources so a restored object
+          # tree counts as up-to-date and only the Rust crates rebuild.
+          find "$V8_SRC" -exec touch -d '2020-01-01 00:00:00' {} + 2>/dev/null || true
           ls -l tools/obscura-snapshot/Cargo.toml
 
       - name: Build bionic compatibility stub
