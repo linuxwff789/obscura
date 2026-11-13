@@ -256,7 +256,7 @@ jobs:
         run: |
           set -euo pipefail
           "$NDK_TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang" \
-            -c bionic-stub.c -o "$RUNNER_TEMP/bionic-stub.o" -fPIC -O2
+            -c assets/bionic-stub.c -o "$RUNNER_TEMP/bionic-stub.o" -fPIC -O2
           echo "BIONIC_STUB_OBJ=$RUNNER_TEMP/bionic-stub.o" >> "$GITHUB_ENV"
           ls -l "$RUNNER_TEMP/bionic-stub.o"
 
