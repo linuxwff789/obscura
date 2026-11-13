@@ -259,8 +259,10 @@ jobs:
       - name: Build bionic compatibility stub
         run: |
           set -euo pipefail
+          # -fno-emulated-tls: NDK defaults to emutls, which hides the
+          # over-aligned TLS symbol from the linker and leaves PT_TLS at 8.
           "$NDK_TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang" \
-            -c assets/bionic-stub.c -o "$RUNNER_TEMP/bionic-stub.o" -fPIC -O2
+            -c assets/bionic-stub.c -o "$RUNNER_TEMP/bionic-stub.o" -fPIC -O2 -fno-emulated-tls
           echo "BIONIC_STUB_OBJ=$RUNNER_TEMP/bionic-stub.o" >> "$GITHUB_ENV"
           ls -l "$RUNNER_TEMP/bionic-stub.o"
 
