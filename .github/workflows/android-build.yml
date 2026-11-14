@@ -263,6 +263,12 @@ jobs:
           p.write_text(s.replace(anchor, inject, 1))
           PYEOF
           grep -n "OBSCURA_SNAPSHOT_BIN" crates/obscura-js/build.rs
+          # deno_core only hands ICU data to V8 when this feature is on; without
+          # it any Intl constructor spins forever inside ures_openWithType on
+          # Android (no system ICU data file).
+          sed -i 's|^deno_core = "0.412"$|deno_core = { version = "0.412", features = ["include_icu_data"] }|' \
+            crates/obscura-js/Cargo.toml
+          grep -n "^deno_core" crates/obscura-js/Cargo.toml
           # Cache restores give ninja objects a fresh mtime, while this run
           # re-extracts the V8 sources. Age the sources so a restored object
           # tree counts as up-to-date and only the Rust crates rebuild.
