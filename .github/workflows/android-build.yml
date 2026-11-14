@@ -169,10 +169,19 @@ jobs:
           # The crate strips the ICU data bundles; Chromium's ICU-77 data for
           # Chromecast ships in the crate and matches the vendored ICU version.
           mkdir -p "$V8_SRC/third_party/icu/common" "$V8_SRC/third_party/icu/android"
-          cp "$V8_SRC/third_party/icu/chromecast_video/icudtl.dat" \
-             "$V8_SRC/third_party/icu/common/icudtl.dat"
-          cp "$V8_SRC/third_party/icu/chromecast_video/icudtl.dat" \
-             "$V8_SRC/third_party/icu/android/icudtl.dat"
+          if [ -f assets/icu/icudt77l.dat ]; then
+            # Full ICU 77.1 data (matches the vendored ICU version), committed
+            # from the unicode-org release tarball.
+            cp assets/icu/icudt77l.dat "$V8_SRC/third_party/icu/common/icudtl.dat"
+            cp assets/icu/icudt77l.dat "$V8_SRC/third_party/icu/android/icudtl.dat"
+          else
+            # Fallback: Chromium's trimmed Chromecast data.
+            cp "$V8_SRC/third_party/icu/chromecast_video/icudtl.dat" \
+               "$V8_SRC/third_party/icu/common/icudtl.dat"
+            cp "$V8_SRC/third_party/icu/chromecast_video/icudtl.dat" \
+               "$V8_SRC/third_party/icu/android/icudtl.dat"
+          fi
+          ls -l "$V8_SRC/third_party/icu/android/icudtl.dat"
 
           # Empty .pydeps placeholders (they only describe Python test deps).
           for d in "$V8_SRC/build/android" "$V8_SRC/build"; do
@@ -363,7 +372,7 @@ jobs:
           # defines an over-aligned TLS symbol that we force into the link.
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=$BIONIC_STUB_OBJ -C link-arg=-Wl,-u,__obscura_tls_align"
           cargo build --release --target aarch64-linux-android \
-            -p obscura-cli --bins --no-default-features 2>&1 | tee build.log
+            -p obscura-cli --bins --no-default-features --features render 2>&1 | tee build.log
 
       - name: Inspect and package
         if: steps.snap.outputs.have == '1'
